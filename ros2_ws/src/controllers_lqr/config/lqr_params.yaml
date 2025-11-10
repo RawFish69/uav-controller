@@ -14,7 +14,7 @@ lqr_controller:
       6.0, 0.0, 0.0, 1.0, 0.0, 0.0,  # p_cmd
       0.0, 6.0, 0.0, 0.0, 1.0, 0.0,  # q_cmd
       0.0, 0.0, 3.0, 0.0, 0.0, 0.8,  # r_cmd
-      0.0, 0.0, 0.0, 0.0, 0.0, 0.0   # thrust_cmd
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0   # thrust_cmd - hover thrust added separately
     ]
     
     # To use custom LQR gains, replace K with your computed matrix
