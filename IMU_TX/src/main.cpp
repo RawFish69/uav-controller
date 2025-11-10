@@ -9,26 +9,25 @@
 // Hardware configuration
 #define IMU_SDA_PIN 8
 #define IMU_SCL_PIN 9
-#define BUTTON_PIN 3       // Optional button for calibration/arming
-#define LED_PIN 10         // Status LED
+#define JOYSTICK_X_PIN 4       // Joystick X-axis (future use)
+#define JOYSTICK_Y_PIN 5       // Joystick Y-axis (throttle)
+#define JOYSTICK_BTN_PIN 3     // Joystick button (arming - AUX1)
+#define LED_PIN 10             // Status LED
 
 // Transmit configuration
 #define IMU_SEND_FREQUENCY_HZ 50  // 50 Hz IMU data
 #define HEARTBEAT_FREQUENCY_HZ 2  // 2 Hz heartbeat
-#define THROTTLE_INPUT_PIN 4      // Analog input for throttle (optional)
 
-// Network configuration (connects to computer)
-const char* WIFI_SSID = "UAV_CONTROL";  // Computer should create this hotspot
-const char* WIFI_PASSWORD = "uav12345";
-uint8_t computerMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // Broadcast initially
+// ESP-NOW configuration (broadcast to RX on drone)
+uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // Broadcast to all RX
 
 // MPU6050 IMU
 MPU6050 mpu;
 
 // State
 bool imuCalibrated = false;
-bool buttonPressed = false;
-float currentThrottle = 0.5;  // Default hover throttle
+bool isArmed = false;
+float currentThrottle = 0.0;  // From joystick Y-axis
 
 // Timing
 unsigned long lastImuSendMs = 0;
@@ -50,9 +49,10 @@ void setup() {
   Serial.println("==========================================\n");
   
   // Setup pins
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(JOYSTICK_BTN_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(THROTTLE_INPUT_PIN, INPUT);
+  pinMode(JOYSTICK_X_PIN, INPUT);
+  pinMode(JOYSTICK_Y_PIN, INPUT);
   
   // Initialize I2C for IMU
   Wire.begin(IMU_SDA_PIN, IMU_SCL_PIN);
@@ -83,21 +83,27 @@ void setup() {
   Serial.println("[IMU] Keep hand still for 3 seconds for zero calibration...");
   
   delay(3000);  // Let sensor stabilize
-  imuCalibrated = true;  // MPU6050 doesn't have built-in calibration status
+  imuCalibrated = true;
   digitalWrite(LED_PIN, HIGH);
   
-  // Initialize protocol (TX mode, broadcast)
-  if (!CustomProtocol_Init(true, computerMac)) {
+  Serial.println("[JOYSTICK] Analog throttle on GPIO 5");
+  Serial.println("[JOYSTICK] Button (arming/AUX1) on GPIO 3");
+  
+  // Initialize protocol (TX mode, broadcast to RX on drone)
+  if (!CustomProtocol_Init(true, broadcastMac)) {
     Serial.println("[PROTO] Protocol init failed!");
     while (1) {
       delay(1000);
     }
   }
   
-  Serial.println("[PROTO] Custom protocol ready");
+  Serial.println("[PROTO] ESP-NOW ready - broadcasting to drone RX");
   Serial.printf("[IMU] Transmitting at %d Hz\n", IMU_SEND_FREQUENCY_HZ);
-  Serial.println("\n*** Move hand to control drone orientation ***");
-  Serial.println("*** Tilt hand = Tilt drone ***\n");
+  Serial.println("\n*** IMU TX Ready for Direct Flight ***");
+  Serial.println("*** Tilt controller = Tilt drone ***");
+  Serial.println("*** Joystick Y = Throttle ***");
+  Serial.println("*** Button = Arm/Disarm (AUX1) ***");
+  Serial.println("*** Computer NOT required for flight! ***\n");
 }
 
 void loop() {
@@ -106,15 +112,18 @@ void loop() {
   // Update protocol
   CustomProtocol_Update();
   
-  // Read button state
-  buttonPressed = !digitalRead(BUTTON_PIN);  // Active low
+  // Read joystick button (arming)
+  isArmed = !digitalRead(JOYSTICK_BTN_PIN);  // Active low
   
-  // Read throttle from analog input (if connected)
-  #ifdef THROTTLE_INPUT_PIN
-  int throttleRaw = analogRead(THROTTLE_INPUT_PIN);
-  currentThrottle = throttleRaw / 4095.0;  // ESP32 ADC is 12-bit
+  // Read throttle from joystick Y-axis
+  int throttleRaw = analogRead(JOYSTICK_Y_PIN);
+  currentThrottle = throttleRaw / 4095.0;  // ESP32 ADC is 12-bit (0-4095)
   currentThrottle = constrain(currentThrottle, 0.0, 1.0);
-  #endif
+  
+  // Apply deadzone (center position ~2048, ±100 counts)
+  if (throttleRaw > 1948 && throttleRaw < 2148) {
+    currentThrottle = 0.5;  // Snap to hover throttle
+  }
   
   // MPU6050 doesn't have auto-calibration like BNO055
   // Just keep LED solid after initial setup
@@ -157,7 +166,7 @@ void loop() {
     // Prepare flags
     uint8_t flags = 0;
     if (imuCalibrated) flags |= 0x01;
-    if (buttonPressed) flags |= 0x02;
+    if (isArmed) flags |= 0x02;  // Button = arming state (AUX1)
     
     // Send IMU data via protocol
     if (!CustomProtocol_SendImuData(qw, qx, qy, qz, currentThrottle, flags)) {
@@ -194,8 +203,8 @@ void loop() {
     Serial.printf("Roll: %.1f° | Pitch: %.1f°\n",
                   roll * 57.3, pitch * 57.3);
     
-    Serial.printf("Throttle: %.2f | Button: %s\n",
-                  currentThrottle, buttonPressed ? "PRESSED" : "released");
+    Serial.printf("Throttle: %.2f | Armed: %s\n",
+                  currentThrottle, isArmed ? "YES" : "NO");
     
     Serial.printf("Link: %s | Packets sent: %lu | Failures: %lu\n",
                   stats.linkActive ? "ACTIVE" : "DOWN",

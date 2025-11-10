@@ -1,18 +1,27 @@
 # UAV-Controller
 
-A modular ROS 2 Humble system for firmware-agnostic UAV control. Supports autonomous control (LQR/PID), manual gesture control (hand IMU), safety features, hardware integration via CRSF, and full simulation.
+ROS 2 control system for quadcopters. Run autonomous controllers (LQR/PID), fly with hand gestures (IMU TX), or test in simulation. Works with any CRSF flight controller via the TX_RX protocol.
 
-## What Can It Do?
+## Operating Modes
 
-1. **Autonomous Control** - LQR or PID for waypoint tracking and autonomous missions
-2. **Manual IMU Gestures** - Hand-mounted IMU TX for intuitive gesture-based piloting
-3. **Simulation** - Test everything safely with RViz before flying
-4. **Hardware Ready** - Works with TX_RX ESP32 project and Betaflight
+**1. Autonomous Control** (Computer → Command TX → RX → Drone)
+- Computer runs LQR/PID controllers
+- Requires: Computer with ROS, Command TX (modified), RX, drone
+
+**2. Manual IMU TX** (IMU TX → RX → Drone, standalone)
+- Hand controller directly controls drone via ESP-NOW
+- Requires: IMU TX hardware, RX, drone
+- **No computer needed for flight!**
+
+**3. Simulation** (Computer only)
+- Test controllers in RViz before flying
+- Requires: Just computer with ROS
 
 ## Documentation
 
-- **docs/SETUP_GUIDE.md** - Build, run sim, tune, test
-- **docs/HARDWARE.md** - All ESP32 setup (IMU TX + TX_RX integration)
+- **docs/SETUP_GUIDE.md** - ROS setup, simulation, tuning
+- **docs/HARDWARE.md** - All ESP32 hardware details
+- **TX_RX/RX_IMU_SUPPORT.md** - Update RX to support IMU TX
 
 ## Architecture
 
@@ -51,14 +60,19 @@ LQR → /cmd/body_rate_thrust → Safety Gate → /cmd/final/body_rate_thrust �
                               /state/attitude + /state/angular_velocity
 ```
 
-**Manual IMU TX**:
+**Manual IMU TX** (Direct Flight, No Computer):
 ```
-IMU TX → Protocol Receiver → IMU Controller → PID Outer → Safety Gate → Hardware
+IMU TX (hand) → ESP-NOW → RX (drone) → CRSF → Flight Controller
 ```
 
-**Hardware Path**:
+**Manual IMU TX** (Sim/Testing with ROS):
 ```
-Controller → Safety Gate → /cmd/final/rc → CRSF Adapter → UDP/Serial → TX_RX ESP32 → Betaflight
+IMU TX → ROS (imu_protocol_receiver) → IMU Controller → PID → Safety → Simulator
+```
+
+**Autonomous Hardware Path**:
+```
+Computer ROS → CRSF Adapter → UDP → Command TX → ESP-NOW → RX → CRSF → Flight Controller
 ```
 
 ### Frame Conventions

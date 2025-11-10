@@ -7,9 +7,9 @@ Publishes to standard ROS IMU and throttle topics.
 
 Packet format (ImuDataPayload):
   float qw, qx, qy, qz  # Quaternion
-  float throttle        # 0.0 to 1.0
+  float throttle        # 0.0 to 1.0 (from joystick Y-axis)
   uint32_t timestamp
-  uint8_t flags         # Bit 0: calibrated, Bit 1: button
+  uint8_t flags         # Bit 0: calibrated, Bit 1: armed (joystick button = AUX1)
 """
 
 import struct
@@ -65,7 +65,7 @@ class ImuProtocolReceiver(Node):
         self.pub_imu = self.create_publisher(Imu, '/imu/data', 10)
         self.pub_throttle = self.create_publisher(Float32, '/manual/throttle', 10)
         self.pub_calibrated = self.create_publisher(Bool, '/imu/calibrated', 10)
-        self.pub_button = self.create_publisher(Bool, '/manual/button', 10)
+        self.pub_armed = self.create_publisher(Bool, '/manual/armed', 10)  # Joystick button = AUX1
 
         # State
         self.last_packet_time = self.get_clock().now()
@@ -168,11 +168,11 @@ class ImuProtocolReceiver(Node):
             calib_msg.data = calibrated
             self.pub_calibrated.publish(calib_msg)
 
-            # Publish button state
-            button_pressed = bool(flags & 0x02)
-            button_msg = Bool()
-            button_msg.data = button_pressed
-            self.pub_button.publish(button_msg)
+            # Publish armed state (joystick button = AUX1)
+            armed = bool(flags & 0x02)
+            armed_msg = Bool()
+            armed_msg.data = armed
+            self.pub_armed.publish(armed_msg)
 
         except Exception as e:
             self.get_logger().error(

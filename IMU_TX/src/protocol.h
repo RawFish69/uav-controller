@@ -35,9 +35,9 @@ typedef struct __attribute__((packed)) {
 // IMU orientation payload
 typedef struct __attribute__((packed)) {
   float qw, qx, qy, qz;  // Quaternion (w, x, y, z)
-  float throttle;        // 0.0 to 1.0
+  float throttle;        // 0.0 to 1.0 (from joystick Y-axis)
   uint32_t timestamp;
-  uint8_t flags;         // Bit 0: calibrated, Bit 1: button pressed
+  uint8_t flags;         // Bit 0: calibrated, Bit 1: armed (joystick button)
 } ImuDataPayload;
 
 typedef struct {

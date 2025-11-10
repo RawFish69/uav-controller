@@ -2,7 +2,9 @@
 
 ## What This Is
 
-ESP32 firmware for hand-mounted IMU sensor that transmits orientation data to the computer via custom wireless protocol. Used for gesture-based drone control.
+Hand controller firmware for direct manual flight. Reads MPU6050 IMU and joystick, transmits to drone RX via ESP-NOW.
+
+**No computer needed for flight** - this is a standalone manual controller that talks directly to the drone.
 
 ## Hardware
 
@@ -26,29 +28,36 @@ GPIO 9  →   SCL
 3.3V    →   VCC
 GND     →   GND
 
+ESP32-C3    Joystick Module
+--------    ---------------
+GPIO 4  →   VRx (X-axis, future use)
+GPIO 5  →   VRy (Y-axis, throttle)
+GPIO 3  →   SW (button, arming)
+3.3V    →   VCC
+GND     →   GND
+
 ESP32-C3    Other
 --------    -----
-GPIO 3  →   Button (to GND)
-GPIO 4  →   Pot wiper (0-3.3V)
-GPIO 10 →   LED + 220Ω resistor
+GPIO 10 →   LED + 220Ω resistor → GND
 ```
 
 ### Mounting Options
 
-**Option 1: Wrist Strap**
-- Velcro or elastic band
+**Option 1: Handheld Grip**
+- 3D printed handle
+- IMU on top surface
+- Joystick accessible by thumb
+- Battery in handle
+
+**Option 2: Glove/Wrist Mount**
 - IMU on back of hand
+- Joystick on palm side (thumb control)
 - Battery on wrist
 
-**Option 2: Glove Mount**
-- Attach to cycling/work glove
-- IMU on back of hand
-- Battery in pocket, wired
-
-**Option 3: 3D Printed Case**
-- Design snap-fit case for IMU + ESP32
-- Wrist mounting straps
-- Battery compartment
+**Option 3: Single-Hand Controller**
+- All components in one enclosure
+- Hold like game controller
+- Tilt controller = tilt drone
 
 **IMU Orientation**:
 - X-axis along fingers (forward)
@@ -74,18 +83,20 @@ pio device monitor
 Edit `src/main.cpp` before building:
 
 ```cpp
-// Network - connect to computer's WiFi hotspot
-const char* WIFI_SSID = "UAV_CONTROL";  // Computer hotspot name
+// WiFi - computer hotspot
+const char* WIFI_SSID = "UAV_CONTROL";
 const char* WIFI_PASSWORD = "uav12345";
 
 // Transmit rate
-#define IMU_SEND_FREQUENCY_HZ 50  // 50 Hz is good balance
+#define IMU_SEND_FREQUENCY_HZ 50
 
-// Pins (adjust for board)
-#define IMU_SDA_PIN 8
-#define IMU_SCL_PIN 9
-#define BUTTON_PIN 3
-#define THROTTLE_INPUT_PIN 4
+// Pins (adjust for your board)
+#define IMU_SDA_PIN 8          // MPU6050 SDA
+#define IMU_SCL_PIN 9          // MPU6050 SCL
+#define JOYSTICK_X_PIN 4       // Future use
+#define JOYSTICK_Y_PIN 5       // Throttle
+#define JOYSTICK_BTN_PIN 3     // Arming
+#define LED_PIN 10
 ```
 
 ## Usage
@@ -106,11 +117,9 @@ Computer receives via `imu_protocol_receiver` ROS node.
 
 ### 4. Control Drone
 
-Tilt hand to control drone orientation:
-- Forward tilt → Drone pitches forward
-- Roll hand → Drone rolls
-- Rotate hand → Drone yaws
-- Throttle from pot/slider
+- **Tilt** controller → Drone tilts (orientation mapped 1:1)
+- **Joystick Y-axis** → Throttle (up = more thrust)
+- **Joystick button** → Arm/Disarm (press to arm)
 
 ## Protocol Details
 
@@ -240,34 +249,38 @@ ros2 topic echo /manual/throttle
 - Test range - stay within WiFi coverage
 - Have manual RC override ready
 
-## System Architecture
+## Data Flow
 
-Complete data flow:
+**Direct Manual Flight** (normal operation):
+```
+IMU TX (hand) → ESP-NOW (PKT_IMU_DATA) → RX (drone) → CRSF → Flight Controller
+```
 
+No computer needed!
+
+**Optional: Test with ROS Simulation**:
 ```
-Hand Movement
-     ↓
-MPU6050 IMU (I2C)
-     ↓
-ESP32 IMU TX (this firmware)
-     ↓ ESP-NOW broadcast
-Computer WiFi
-     ↓
-imu_protocol_receiver (ROS node)
-     ↓
-imu_controller_node
-     ↓
-PID Controller → Safety → CRSF → TX_RX → Drone
+IMU TX → USB ESP32 dongle → Computer ROS → Simulator → RViz
 ```
+
+Only for testing gestures before flight.
+
+## Integration with TX_RX
+
+The RX firmware needs one update to handle `PKT_IMU_DATA` packets. See `../TX_RX/RX_IMU_SUPPORT.md` for the code to add.
+
+After RX update, the system supports three transmitter types:
+1. Bench Test TX (auto testing)
+2. Command TX (computer/ROS autonomous control)  
+3. IMU TX (manual gesture control) ← This one
+
+All use same RX, same protocol!
 
 ---
 
-**Next Steps:**
-1. Wire up IMU to ESP32
-2. Flash this firmware
-3. Test IMU calibration
-4. Connect computer to same WiFi
-5. Run ROS stack
-6. Move hand, see drone respond in sim
-7. Once confident, try on real hardware
+**Quick Start:**
+1. Wire MPU6050 + joystick to ESP32
+2. Flash this firmware: `pio run -t upload`
+3. Update RX firmware (add IMU packet handler)
+4. Power on, tilt to fly!
 
